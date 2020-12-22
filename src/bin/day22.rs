@@ -11,6 +11,7 @@ use nom::IResult;
 use nom::multi::{count, separated_list0};
 use nom::sequence::{preceded, separated_pair, terminated};
 use tinyvec::{Array, ArrayVec};
+use std::time::Instant;
 
 trait ArrayVecDeque<A: Array> {
     fn pop_front(&mut self) -> Option<A::Item>;
@@ -49,6 +50,7 @@ fn main() {
     let mut file = File::open("input/day22.txt").unwrap();
     file.read_to_string(&mut input).unwrap();
 
+    let now = Instant::now();
     let (_, (deck1, deck2)) = parse_input(&input).unwrap();
 
     let deck1 = Deck::from_iter(deck1.into_iter());
@@ -57,8 +59,10 @@ fn main() {
     let (_, winning_deck) = combat(deck1, deck2);
     println!("Part 1: {}", compute_score(winning_deck));
 
-    let (_, winning_deck) = recursive_combat(deck1, deck2);
+    let (_, winning_deck) = recursive_combat(deck1, deck2, false);
     println!("Part 2: {}", compute_score(winning_deck));
+
+    println!("Time: {}ms", now.elapsed().as_millis());
 }
 
 fn compute_score(deck: Deck) -> usize {
@@ -93,10 +97,15 @@ fn combat(mut deck1: Deck, mut deck2: Deck) -> (bool, Deck) {
 fn recursive_combat(
     mut deck1: Deck,
     mut deck2: Deck,
+    is_sub_game: bool,
 ) -> (bool, Deck) {
     let mut prev_rounds = HashSet::new();
 
     while !deck1.is_empty() && !deck2.is_empty() {
+        if is_sub_game && deck1.iter().max().unwrap() > deck2.iter().max().unwrap() {
+            return (true, deck1);
+        }
+
         if !prev_rounds.insert((deck1.clone(), deck2.clone())) {
             return (true, deck1);
         }
@@ -113,7 +122,8 @@ fn recursive_combat(
 
             recursive_combat(
                 sub_deck1,
-                sub_deck2
+                sub_deck2,
+                true
             ).0
         } else {
             card1 > card2
