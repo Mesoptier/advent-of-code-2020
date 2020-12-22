@@ -1,15 +1,48 @@
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
+use std::iter::FromIterator;
 use std::str::FromStr;
 
 use nom::bytes::complete::tag;
 use nom::character::complete::{digit1, line_ending};
 use nom::combinator::map;
 use nom::IResult;
-use nom::lib::std::collections::{VecDeque};
 use nom::multi::{count, separated_list0};
 use nom::sequence::{preceded, separated_pair, terminated};
-use std::collections::HashSet;
+use tinyvec::{Array, ArrayVec};
+
+trait ArrayVecDeque<A: Array> {
+    fn pop_front(&mut self) -> Option<A::Item>;
+    fn pop_back(&mut self) -> Option<A::Item>;
+
+    fn push_front(&mut self, el: A::Item);
+    fn push_back(&mut self, el: A::Item);
+}
+
+impl<A: Array> ArrayVecDeque<A> for ArrayVec<A> {
+    fn pop_front(&mut self) -> Option<A::Item> {
+        if self.len() > 0 {
+            Some(self.remove(0))
+        } else {
+            None
+        }
+    }
+
+    fn pop_back(&mut self) -> Option<A::Item> {
+        self.pop()
+    }
+
+    fn push_front(&mut self, el: A::Item) {
+        self.insert(0, el)
+    }
+
+    fn push_back(&mut self, el: A::Item) {
+        self.push(el)
+    }
+}
+
+type Deck = ArrayVec<[usize; 64]>;
 
 fn main() {
     let mut input = String::default();
@@ -18,23 +51,23 @@ fn main() {
 
     let (_, (deck1, deck2)) = parse_input(&input).unwrap();
 
-    let deck1 = VecDeque::from(deck1);
-    let deck2 = VecDeque::from(deck2);
+    let deck1 = Deck::from_iter(deck1.into_iter());
+    let deck2 = Deck::from_iter(deck2.into_iter());
 
-    let (_, winning_deck) = combat(deck1.clone(), deck2.clone());
+    let (_, winning_deck) = combat(deck1, deck2);
     println!("Part 1: {}", compute_score(winning_deck));
 
-    let (_, winning_deck) = recursive_combat(deck1.clone(), deck2.clone());
+    let (_, winning_deck) = recursive_combat(deck1, deck2);
     println!("Part 2: {}", compute_score(winning_deck));
 }
 
-fn compute_score(deck: VecDeque<usize>) -> usize {
+fn compute_score(deck: Deck) -> usize {
     deck.iter().rev().enumerate()
         .map(|(index, card)| (index + 1) * card)
         .sum()
 }
 
-fn combat(mut deck1: VecDeque<usize>, mut deck2: VecDeque<usize>) -> (bool, VecDeque<usize>) {
+fn combat(mut deck1: Deck, mut deck2: Deck) -> (bool, Deck) {
     while !deck1.is_empty() && !deck2.is_empty() {
         let card1 = deck1.pop_front().unwrap();
         let card2 = deck2.pop_front().unwrap();
@@ -58,15 +91,12 @@ fn combat(mut deck1: VecDeque<usize>, mut deck2: VecDeque<usize>) -> (bool, VecD
 }
 
 fn recursive_combat(
-    mut deck1: VecDeque<usize>,
-    mut deck2: VecDeque<usize>,
-) -> (bool, VecDeque<usize>) {
+    mut deck1: Deck,
+    mut deck2: Deck,
+) -> (bool, Deck) {
     let mut prev_rounds = HashSet::new();
 
     while !deck1.is_empty() && !deck2.is_empty() {
-        // println!("Player 1's deck: {}", deck1.iter().join(", "));
-        // println!("Player 2's deck: {}", deck2.iter().join(", "));
-
         if !prev_rounds.insert((deck1.clone(), deck2.clone())) {
             return (true, deck1);
         }
@@ -75,9 +105,15 @@ fn recursive_combat(
         let card2 = deck2.pop_front().unwrap();
 
         let player1_wins = if card1 <= deck1.len() && card2 <= deck2.len() {
+            let mut sub_deck1 = deck1.clone();
+            let mut sub_deck2 = deck2.clone();
+
+            sub_deck1.truncate(card1);
+            sub_deck2.truncate(card2);
+
             recursive_combat(
-                deck1.iter().take(card1).cloned().collect(),
-                deck2.iter().take(card2).cloned().collect(),
+                sub_deck1,
+                sub_deck2
             ).0
         } else {
             card1 > card2
